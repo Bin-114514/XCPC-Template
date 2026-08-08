@@ -25,7 +25,7 @@ jobs:
               pandoc /data/README.md /data/docs/supplement.md \
                 --from=gfm --standalone --toc --number-sections \
                 --pdf-engine=xelatex \
-                -V CJKmainfont="FandolSong" \
+                -V CJKmainfont="Noto Serif CJK SC" \
                 -V geometry:margin=1.8cm \
                 -V pagestyle=plain \
                 -o /data/hust-three-boars-template.pdf'
