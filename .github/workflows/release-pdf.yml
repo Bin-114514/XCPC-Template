@@ -20,7 +20,8 @@ jobs:
             -v "$PWD:/data" \
             --entrypoint /bin/sh \
             pandoc/latex:3.6 \
-            -c 'tlmgr install xecjk && \
+            -c 'tlmgr option repository https://ftp.tu-chemnitz.de/pub/tex/historic/systems/texlive/2024/tlnet-final && \
+              tlmgr install xecjk && \
               pandoc /data/README.md /data/docs/supplement.md \
                 --from=gfm --standalone --toc --number-sections \
                 --pdf-engine=xelatex \
