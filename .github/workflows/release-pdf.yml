@@ -18,10 +18,10 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD:/data" \
-            --entrypoint /bin/sh \
-            pandoc/latex:3.6 \
-            -c 'tlmgr option repository https://ftp.tu-chemnitz.de/pub/tex/historic/systems/texlive/2024/tlnet-final && \
-              tlmgr install xecjk && \
+            ubuntu:24.04 \
+            sh -c 'export DEBIAN_FRONTEND=noninteractive && \
+              apt-get update && \
+              apt-get install -y --no-install-recommends pandoc texlive-xetex texlive-lang-chinese fonts-noto-cjk && \
               pandoc /data/README.md /data/docs/supplement.md \
                 --from=gfm --standalone --toc --number-sections \
                 --pdf-engine=xelatex \
