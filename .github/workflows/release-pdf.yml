@@ -20,8 +20,7 @@ jobs:
             -v "$PWD:/data" \
             --entrypoint /bin/sh \
             pandoc/latex:3.6 \
-            -c 'tlmgr option repository https://mirror.ctan.org/systems/texlive/tlnet && \
-              tlmgr install xeCJK && \
+            -c 'tlmgr install xeCJK && \
               pandoc /data/README.md /data/docs/supplement.md \
                 --from=gfm --standalone --toc --number-sections \
                 --pdf-engine=xelatex \
@@ -39,4 +38,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: hust-three-boars-template.pdf
+
+
 
