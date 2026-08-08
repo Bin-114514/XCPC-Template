@@ -21,7 +21,7 @@ jobs:
             ubuntu:24.04 \
             sh -c 'export DEBIAN_FRONTEND=noninteractive && \
               apt-get update && \
-              apt-get install -y --no-install-recommends pandoc texlive-xetex texlive-lang-chinese fonts-noto-cjk && \
+              apt-get install -y --no-install-recommends pandoc texlive-xetex texlive-lang-chinese fonts-noto-cjk lmodern texlive-fonts-recommended && \
               pandoc /data/README.md /data/docs/supplement.md \
                 --from=gfm --standalone --toc --number-sections \
                 --pdf-engine=xelatex \
