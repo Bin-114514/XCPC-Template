@@ -20,7 +20,7 @@ jobs:
             -v "$PWD:/data" \
             --entrypoint /bin/sh \
             pandoc/latex:3.6 \
-            -c 'tlmgr install xeCJK && \
+            -c 'tlmgr install xecjk && \
               pandoc /data/README.md /data/docs/supplement.md \
                 --from=gfm --standalone --toc --number-sections \
                 --pdf-engine=xelatex \
