@@ -11,6 +11,7 @@
 - [矩阵方程 `AB=C` 的高斯-约旦消元](#矩阵方程-abc-的高斯-约旦消元)
 - [数位 DP：统计区间最优数字频次](#数位-dp统计区间最优数字频次)
 - [线段树优化建图](#线段树优化建图)
+- [迭代式线段树：单点修改区间查最小值](#迭代式线段树单点修改区间查最小值)
 
 ## 网络流
 
@@ -70,7 +71,7 @@ int dinic(int s, int t, int n) {
 
 **复杂度**：单次读写 `O(位数)`，空间 `O(位数)`。
 
-**边界条件**：最小值取相反数时可能超出 `__int128`；不要把它当作任意精度整数。输出 `0` 需要确保写函数覆盖该情况。
+**边界条件**：最小值取相反数时可能超出 `__int128`；不要把它当作任意精度整数。输出 `0` 已覆盖。**使用方必须 `using namespace my128;` 或显式写 `my128::operator>>`**，否则 `cin >> x` 找不到该重载（`__int128_t` 无关联命名空间，不参与 ADL）。
 
 **直属依赖**：`string`、`reverse`、`istream`、`ostream`、`function`；GCC/Clang 扩展，不适用于 MSVC 原生编译器。
 
@@ -128,15 +129,110 @@ struct MinPathCover {
 
 ## 最小费用最大流
 
-**适用条件**：费用可为负但不存在从源可达的负环；需要同时求流量和费用。该版本是队伍内部数组接口的草稿，使用前应与现有 `Flow`/常量定义核对。
+**适用条件**：边费用非负（含 `0`）。实现为势能 + Dijkstra、势能初始为 `0`，不处理负边；需要负费用时先对图做一次 SPFA/差分约束求出初始势能，或改用 SPFA 版。
 
-**复杂度**：势能 + Dijkstra 的复杂度约为 `O(F E log V)`；首次 SPFA 可能较慢。
+**复杂度**：`O(F * E log V)`，其中 `F` 为增广次数；每次增广一次 Dijkstra，势能保证后续轮次边权非负。
 
-**边界条件**：必须正确初始化 `dot`（所有参与点）；`N`、`M`、`INF`、`PII` 必须由外部提供。费用或总费用可能需要 `long long`。
+**边界条件**：`flow(s,t)` 返回 `{最大流, 最小费用}`；无可行流时返回 `{0, 0}`。费用或总费用可能需要 `long long`。`dijkstra` 中 `INF` 取 `numeric_limits<T>::max()/4`，实际费用不能超过该值。
 
-**直属依赖**：`queue`、`priority_queue`、`vector`、`PII`、`N/M/INF` 常量；无这些定义时不能独立编译。
+**直属依赖**：`vector`、`queue`、`limits`、`utility`；需要 `numeric_limits`。`flow` 会就地修改边的残量容量，多次调用前需要重建或重新初始化。
 
-> 原始版本包含未使用变量和依赖外部符号，暂作为“待核对补充”保留，不标记为稳定模板。合并前请维护者确认势能更新和负费用终止条件。
+> 最大费用最大流：本模板**不支持负边**，不能直接用 `INF - w` 技巧。如确需最大费用，改用支持负边的 SPFA 版 MCMF，或先做一轮 SPFA 初始化势能。若某图只有非负费用却要求"最大费用"，可用势能初始化版：每条边费用设为 `C - w`（`C` 不小于所有边权最大值），跑完最小费用最大流后，最大费用 = `最大流 * C - 最小费用`；但图中存在负费用反向边时此做法同样失效，需先验证。
+
+```cpp
+template <class T>
+struct MinCostFlow {
+    struct Edge {
+        int to;
+        T cap, cost;
+        Edge(int to, T cap, T cost) : to(to), cap(cap), cost(cost) {}
+    };
+
+    int n;
+    vector<Edge> e;
+    vector<vector<int>> g;
+    vector<T> h, dis;
+    vector<int> pre;
+
+    MinCostFlow() {}
+    MinCostFlow(int n) { init(n); }
+
+    void init(int n_) {
+        n = n_;
+        e.clear();
+        g.assign(n, {});
+    }
+
+    void addEdge(int u, int v, T cap, T cost) {
+        g[u].push_back((int)e.size());
+        e.emplace_back(v, cap, cost);
+        g[v].push_back((int)e.size());
+        e.emplace_back(u, 0, -cost);
+    }
+
+    bool dijkstra(int s, int t) {
+        const T INF = numeric_limits<T>::max() / 4;
+        dis.assign(n, INF);
+        pre.assign(n, -1);
+
+        using State = pair<T, int>;
+        priority_queue<State, vector<State>, greater<State>> pq;
+
+        dis[s] = 0;
+        pq.emplace(0, s);
+
+        while (!pq.empty()) {
+            auto [d, u] = pq.top();
+            pq.pop();
+
+            if (d != dis[u]) continue;
+
+            for (int id : g[u]) {
+                Edge& ed = e[id];
+                if (ed.cap <= 0) continue;
+
+                int v = ed.to;
+                T nd = d + h[u] - h[v] + ed.cost;
+
+                if (nd < dis[v]) {
+                    dis[v] = nd;
+                    pre[v] = id;
+                    pq.emplace(nd, v);
+                }
+            }
+        }
+
+        return dis[t] != INF;
+    }
+
+    pair<T, T> flow(int s, int t) {
+        const T INF = numeric_limits<T>::max() / 4;
+        T maxFlow = 0, minCost = 0;
+
+        h.assign(n, 0);
+
+        while (dijkstra(s, t)) {
+            for (int i = 0; i < n; ++i)
+                if (dis[i] != INF) h[i] += dis[i];
+
+            T aug = INF;
+            for (int v = t; v != s; v = e[pre[v] ^ 1].to)
+                aug = min(aug, e[pre[v]].cap);
+
+            for (int v = t; v != s; v = e[pre[v] ^ 1].to) {
+                int id = pre[v];
+                e[id].cap -= aug;
+                e[id ^ 1].cap += aug;
+            }
+
+            maxFlow += aug;
+            minCost += aug * h[t];
+        }
+
+        return {maxFlow, minCost};
+    }
+};
+```
 
 ## 矩阵方程 `AB=C` 的高斯-约旦消元
 
@@ -148,125 +244,6 @@ struct MinPathCover {
 
 **直属依赖**：`vector<vector<double>>`、`fabs`、`swap`；需要 `<cmath>` 和 `<vector>`。
 
-## 数位 DP：统计区间最优数字频次
-
-**适用条件**：统计 `0..x` 中每个数位出现次数的最大值之和；代码使用全局 `num` 和记忆化 map。
-
-**复杂度**：状态数受 `pos` 与计数向量影响，当前 `map<vector<int>, int>` 常数较大；不适合无上界的大范围重复调用。
-
-**边界条件**：当前 `get(x <= 0)` 直接返回 `x`，只适用于题目明确允许该约定的场景；前导零由 `zero` 区分。计数结果可能超过 `int`。
-
-**直属依赖**：`vector`、`map`、`max_element`；全局 `num`、`mp` 和 `dfs` 必须保持一致。
-
-## 线段树优化建图
-
-**适用条件**：需要点到区间、区间到点或区间到区间的批量连边；节点编号为 `1..n`，边权为 `long long`。
-
-**复杂度**：建树 `O(n)`；每次点/区间操作 `O(log n)` 个线段树节点，区间到区间使用一个虚拟点。
-
-**边界条件**：`n` 必须为正；数组预估 `n * 5 + q` 和 `q * 40` 不是严格证明，操作很多或区间拆分密集时需增大容量。这里是单向边图，不自动添加反边。
-
-**直属依赖**：`vector`、`long long`；调用方需自行接入最短路/最小割等图算法。
-
-> 这是本手册中依赖最复杂的模板之一。它直接依赖“物理点”，再依赖入树、出树和区间操作产生的虚拟点；不要把线段树内部编号当作原图点编号。
-## 代码补录
-
-以下代码来自初始整理文件，保留为待核对补充。它们对应前文的最小费用最大流、矩阵方程、数位 DP 和线段树优化建图章节。
-
-最小费用最大流（dinic算法）
-
-```cpp
-struct MCMF {
-    int h[N], e[M], f[M], w[M], ne[M], idx;
-    int dis[N], cur[N]; // d表示最短距离,cur为当前弧
-    int n, m, S, T;
-    bool vis[N];
-    int height[N]; // 势能函数
-    vector<int> dot; // 点数
-    MCMF(int n, int S, int T) {
-        this->n = n;
-        this->S = S;
-        this->T = T;
-        idx = 0;
-        memset(h, -1, sizeof h);
-        memset(height, 0, sizeof height);
-        memset(vis, 0, sizeof vis);
-    }
-    void add(int a, int b, int c, int d) {
-        e[idx] = b, f[idx] = c, w[idx] = d, ne[idx] = h[a], h[a] = idx++;
-        e[idx] = a, f[idx] = 0, w[idx] = -d, ne[idx] = h[b], h[b] = idx++;
-    }
-    bool spfa() {
-        for (auto& i : dot) height[i] = INF;
-        height[S] = 0;
-        queue<int> q;
-        q.push(S);
-        vis[S] = 1;
-        while (!q.empty()) {
-            int u = q.front();
-            q.pop();
-            vis[u] = 0;
-            for (int i = h[u]; ~i; i = ne[i]) {
-                int v = e[i];
-                if (f[i] && height[v] > height[u] + w[i]) {
-                    height[v] = height[u] + w[i];
-                    if (!vis[v]) q.push(v), vis[v] = 1;
-                }
-            }
-        }
-        return height[T] != INF;
-    }
-    bool dijk() {
-        for (auto& i : dot) dis[i] = INF, cur[i] = h[i];
-        priority_queue<PII, vector<PII>, greater<>> pq;
-        dis[S] = 0;
-        pq.emplace(0, S);
-        while (!pq.empty()) {
-            auto [d, u] = pq.top();
-            pq.pop();
-            if (dis[u] != d) continue;
-            for (int i = h[u]; ~i; i = ne[i]) {
-                int v = e[i];
-                if (f[i] && dis[v] > d + height[u] - height[v] + w[i]) {
-                    dis[v] = d + height[u] - height[v] + w[i];
-                    pq.emplace(dis[v], v);
-                }
-            }
-        }
-        return dis[T] != INF;
-    }
-    int find(int u, int limit) {
-        if (!limit || u == T) return limit;
-        int flow = 0;
-        vis[u] = 1;
-        for (int& i = cur[u]; ~i && flow < limit; i = ne[i]) {
-            int v = e[i];
-            if (dis[v] == dis[u] + height[u] - height[v] + w[i] && f[i] && !vis[v]) {
-                int t = find(v, min(f[i], limit - flow));
-                f[i] -= t, f[i ^ 1] += t, flow += t;
-                if (flow == limit) break;
-            }
-        }
-        vis[u] = 0;
-        return flow;
-    }
-    void mcmf(int& flow, int& cost) {
-        flow = cost = 0;
-        int r = 0;
-        spfa();
-        while (dijk()) {
-            if (height[T] >= 0) break;
-            int r = find(S, INF);
-            flow += r;
-            for (auto& i : dot) {
-                if (dis[i] != INF) height[i] += dis[i];
-            }
-            cost += height[T] * r;
-        }
-    }
-};
-```
-高斯消元法求解矩阵方程`AB=C`，`A`,`C`已知求`B`。
 ```cpp
 const double EPS = 1e-9;
 // 求解实数矩阵方程 A * B = C
@@ -325,9 +302,17 @@ bool solveAB_C(const vector<vector<double>>& A, const vector<vector<double>>& C,
     return true; // 求解成功
 }
 ```
-数位DP模板
-下面是计算 $f(x)=x$中出现次数最多的数字的次数，求解$\sum_{i=0}^nf(i)$的程序。
-这题的小技巧就是dp可以只记录本质不同的性质。
+
+## 数位 DP：统计区间最优数字频次
+
+**适用条件**：统计 `0..x` 中每个数位出现次数的最大值之和；代码使用全局 `num` 和记忆化 map。
+
+**复杂度**：状态数受 `pos` 与计数向量影响，当前 `map<vector<int>, int>` 常数较大；不适合无上界的大范围重复调用。
+
+**边界条件**：前导零由 `zero` 区分；计数结果可能超过 `int`。`get(x)` 的定义为**不含 `0`**（`get(0)=0`、`get(负数)=负数` 直接透传），与暴力统计 `0..x`（含 0）差一个 `0` 的贡献（所有非负值 `f(0)=1`）；使用前务必确认题目口径是否包含 `0`。
+
+**直属依赖**：`vector`、`map`、`max_element`；全局 `num`、`mp` 和 `dfs` 必须保持一致。
+
 ```cpp
 int num[20];
 vector<map<vector<int>, int>> mp(20);
@@ -361,7 +346,19 @@ int get(int x) {
     return dfs(len, vector<int>(10, 0), 1, 1);
 }
 ```
-线段树优化建图
+
+## 线段树优化建图
+
+**适用条件**：需要点到区间、区间到点或区间到区间的批量连边；节点编号为 `1..n`，边权为 `long long`。
+
+**复杂度**：建树 `O(n)`；每次点/区间操作 `O(log n)` 个线段树节点，区间到区间使用一个虚拟点。
+
+**边界条件**：`n` 必须为正；数组预估 `n * 5 + q` 和 `q * 40` 不是严格证明，操作很多或区间拆分密集时需增大容量。这里是单向边图，不自动添加反边。
+
+**直属依赖**：`vector`、`long long`；调用方需自行接入最短路/最小割等图算法。
+
+> 这是本手册中依赖最复杂的模板之一。它直接依赖”物理点”，再依赖入树、出树和区间操作产生的虚拟点；不要把线段树内部编号当作原图点编号。
+
 ```cpp
 #include <bits/stdc++.h>
 using namespace std;
@@ -469,3 +466,46 @@ struct SegGraph {
 };
 ```
 
+
+
+## 迭代式线段树：单点修改区间查最小值
+
+**适用条件**：维护 `1..n` 的静态点值，支持把某个点的值改小，以及查询闭区间 `[l,r]` 的最小值。这里的 `BIT` 实际是迭代式线段树，名称沿用原模板。
+
+**复杂度**：空间 `O(n)`；单点修改 `O(log n)`；区间查询 `O(log n)`。
+
+**边界条件**：`1 <= l <= r <= n`，`pos` 也必须在 `1..n`。当前 `modify` 在 `val >= w[p]` 时直接返回，因此只支持单调减小，不能把点值改大或覆盖成更大的值；若需要任意赋值，应删除这个提前返回并重新向上维护。`INF` 和实际值的运算不能溢出。
+
+**直属依赖**：`vector`、`numeric_limits<ll>`、`min`；调用前需要定义 `ll`，例如 `using ll = long long;`。
+
+```cpp
+struct BIT {
+    static constexpr ll INF = numeric_limits<ll>::max();
+    vector<ll> w;
+    int n;
+    BIT(int n) : n(n), w(2 * n, INF) {}
+    // a[pos] = val，pos 使用 1-index；当前实现只接受更小的 val
+    void modify(int pos, ll val) {
+        int p = pos + n - 1;
+        if (val >= w[p]) return;
+        w[p] = val;
+        while (p > 1) {
+            p >>= 1;
+            w[p] = min(w[p << 1], w[p << 1 | 1]);
+        }
+    }
+    // 查询闭区间 [l, r] 的最小值，l、r 使用 1-index
+    ll rangeMin(int l, int r) const {
+        ll res = INF;
+        int L = l + n - 1;
+        int R = r + n;
+        while (L < R) {
+            if (L & 1) res = min(res, w[L++]);
+            if (R & 1) res = min(res, w[--R]);
+            L >>= 1;
+            R >>= 1;
+        }
+        return res;
+    }
+};
+```
